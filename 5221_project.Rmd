@@ -1,0 +1,354 @@
+---
+title: "5221 Project"
+author: "yg2804"
+date: "4/20/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data load 
+```{r}
+setwd("C:\\Users\\irene\\Desktop\\5221 time series analysis\\5221 project")
+
+library(tidyverse)
+weather <- read_csv("WindSpeed_Month_Ave.csv")
+head(weather)
+sum(is.na(weather))
+```
+
+EDA
+```{r}
+site <- weather %>% select(year, month, X1) 
+site.data <- site$X1
+plot(site.data, type="o")
+
+acf(site.data)
+pacf(site.data)
+
+head(site.data)
+
+```
+
+
+Train and test split 
+```{r}
+library(TSstudio)
+y <- ts(site.data, start = c(1979, 1), end = c(2018, 12), frequency = 12)
+#train/test split
+y.split <- ts_split(y, sample.out = 48)
+
+y.train <- y.split$train
+y.test <- y.split$test
+
+# y.test
+# y.train
+
+```
+
+Plots 
+```{r}
+library(tseries)
+decomp <- decompose(y)
+plot(decomp)
+
+# trend and seasonality 
+b.data <- ts(site.data, start=c(1979, 1), end=c(2018, 12), frequency=12)
+boxplot(b.data~cycle(b.data), ylab ='WindSpeed',
+        xlab ='Month',col = 'darkgrey')
+
+# test for stationary 
+adf.test(y)
+# test for trend 
+kpss.test(y)
+
+deseasonalized <- diff(y, lag= 12)
+adf.test(diff(y, lag = 12))
+
+
+acf(deseasonalized, lag.max=50)
+pacf(deseasonalized, lag.max=50)
+
+ts.plot(deseasonalized, col = 'darkgrey')
+
+d2 <- diff(deseasonalized)
+acf(d2, lag.max=80)
+pacf(d2, lag.max=80)
+# AR 0 or 1
+```
+
+Auto-arima 
+```{r}
+library(forecast)
+auto.arima(y=y.train, ic="bic")
+```
+
+Iteration of order selection 
+```{r, error=TRUE}
+
+bic <- c()
+pl <- c()
+ql <- c()
+Pl <- c()
+Ql <- c()
+
+for (p in 0:1) {
+  for (q in 0:1) {
+    for (P in 1:2){
+      for (Q in 0:1){
+        arima.fit <- arima(y.train,order=c(p,0,q), 
+                           seasonal=c(P,1,Q))
+        bic <- append(bic, BIC(arima.fit))
+        pl <- append(pl, p)
+        ql <- append(ql, q)
+        Pl <- append(Pl, P)
+        Ql <- append(Ql, Q)
+      }
+    }
+  }
+}
+
+order <- data.frame(p = pl,
+           q = ql, 
+           P = Pl, 
+           Q = Ql, 
+           BIC = bic)
+
+order %>% arrange(BIC)
+
+```
+Model selection
+```{r}
+library(forecast)
+# 0,0,1,1
+arima.fit1 <- Arima(y=y.train,order=c(0,0,0), seasonal=c(1,1,1))
+resids.arima <- arima.fit1$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+# acf(resids.arima,main="ARMA Resids Best Order")
+tsdisplay(resids.arima)
+# pacf(resids.arima)
+
+summary(arima.fit1)
+checkresiduals(arima.fit1)
+
+arima.fit1$bic
+
+
+```
+
+```{r}
+# 1,1,1,1
+
+arima.fit2 <- Arima(y=y.train,order=c(1,0,1), seasonal=c(1,1,1))
+resids.arima <- arima.fit2$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+# acf(resids.arima,main="ARMA Resids Best Order")
+tsdisplay(resids.arima)
+# pacf(resids.arima)
+
+summary(arima.fit2)
+checkresiduals(arima.fit2)
+
+arima.fit$bic
+# get accuracy statistics 
+accuracy(arima.fit2)
+
+
+```
+
+```{r}
+# 1,0,1,1
+
+arima.fit3 <- Arima(y=y.train,order=c(1,0,0), seasonal=c(1,1,1))
+resids.arima <- arima.fit3$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+# acf(resids.arima,main="ARMA Resids Best Order")
+tsdisplay(resids.arima)
+# pacf(resids.arima)
+
+summary(arima.fit3)
+checkresiduals(arima.fit3)
+
+arima.fit$bic
+
+```
+
+```{r}
+# 0,1,1,1
+
+arima.fit4 <- Arima(y=y.train,order=c(0,0,1), seasonal=c(1,1,1))
+resids.arima <- arima.fit4$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+# acf(resids.arima,main="ARMA Resids Best Order")
+tsdisplay(resids.arima)
+# pacf(resids.arima)
+
+summary(arima.fit4)
+checkresiduals(arima.fit4)
+
+arima.fit$bic
+
+```
+```{r}
+library(gridExtra)
+aic <- c(arima.fit1$aic, arima.fit2$aic, arima.fit3$aic, arima.fit4$aic)
+bic <- c(arima.fit1$bic, arima.fit2$bic, arima.fit3$bic, arima.fit4$bic)
+aicc <- c(arima.fit1$aicc, arima.fit2$aicc, arima.fit3$aicc, arima.fit4$aicc)
+mape <- c(accuracy(arima.fit1)[5], accuracy(arima.fit2)[5], accuracy(arima.fit3)[5], accuracy(arima.fit4)[5])
+Ljung_Box <- c(0.09217, 0.4398, 0.1537, 0.1373)
+model <- c("ARIMA(0,0,0)(1,1,1)[12]", "ARIMA(1,0,1)(1,1,1)[12]", "ARIMA(1,0,0)(1,1,1)[12]", "ARIMA(0,1,1)(1,1,1)[12]")
+
+model.compare <- data.frame(model=model, AIC=aic, 
+           AICC=aicc, BIC=bic, MAPE=mape, "Ljung-Box p-value"=Ljung_Box)
+model.compare
+
+p <- tableGrob(model.compare)
+grid.arrange(p)
+
+
+```
+Prediction 
+```{r}
+pred <- forecast(arima.fit2, h=48)
+# pred
+acc <- accuracy(pred$mean, y.test)
+pred.stat <- data.frame(RSME=acc[2], MAPE=acc[5])
+plot(pred, shadecols = 'beige', col = 'darkgrey')
+acc
+
+````
+
+Test 2 more sites 
+```{r}
+# sample(1:916, 2) # 562 808
+# X562
+site562 <- weather %>% select(year, month, X562) 
+site.data562 <- site562$X562
+plot(site.data562, type="o")
+
+acf(site.data562)
+pacf(site.data562)
+
+# train and test split
+y <- ts(site.data562, start = c(1979, 1), end = c(2018, 12), frequency = 12)
+y.split <- ts_split(y, sample.out = 48)
+
+y.train <- y.split$train
+y.test <- y.split$test
+
+# fit model 
+arima.fit562 <- Arima(y=y.train,order=c(1,0,1), seasonal=c(1,1,1))
+
+resids.arima <- arima.fit562$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+acf(resids.arima,main="ARMA Resids Best Order")
+
+summary(arima.fit562)
+checkresiduals(arima.fit562)
+
+
+pred562 <- forecast(arima.fit562, h=48)
+# pred
+acc562 <- accuracy(pred562$mean, y.test)
+# pred.stat <- data.frame(RSME=acc[2], MAPE=acc[5])
+plot(pred562, shadecols = 'beige', col = 'darkgrey')
+acc562
+
+```
+
+```{r}
+# X808
+site808 <- weather %>% select(year, month, X808) 
+site.data808 <- site808$X808
+plot(site.data808, type="o")
+
+acf(site.data808)
+pacf(site.data808)
+
+# train and test 
+y <- ts(site.data808, start = c(1979, 1), end = c(2018, 12), frequency = 12)
+
+y.split <- ts_split(y, sample.out = 48)
+
+y.train <- y.split$train
+y.test <- y.split$test
+
+
+
+arima.fit808 <- Arima(y=y.train,order=c(1,0,1), seasonal=c(1,1,1))
+
+resids.arima <- arima.fit808$residuals
+plot(resids.arima,type="o",main="ARMA Resids Best Order")
+acf(resids.arima,main="ARMA Resids Best Order")
+
+summary(arima.fit808)
+checkresiduals(arima.fit808)
+
+
+pred808 <- forecast(arima.fit808, h=48)
+# pred
+acc808 <- accuracy(pred808$mean, y.test)
+# pred.stat <- data.frame(RSME=acc[2], MAPE=acc[5])
+plot(pred808, shadecols = 'beige', col = 'darkgrey')
+acc808
+
+```
+```{r}
+acc
+acc562
+acc808
+s.name <- c("X1", "X562", "X808")
+s.mae <- c(acc[3], acc562[3], acc808[3])
+s.rsme <- c(acc[2], acc562[2], acc808[2])
+s.mpe <- c(acc[4], acc562[4], acc808[4])
+s.mape <- c(acc[5], acc562[5], acc808[5])
+acc.data <- data.frame(location=s.name, RMSE=s.rsme, MAE=s.mae, 
+                       MPE=s.mpe, MAPE=s.mape)
+acc.data
+p.acc <- tableGrob(acc.data)
+grid.arrange(p.acc)
+```
+
+Fit all sites final prediction
+```{r}
+final.pred <- data.frame(future_months = c(1,2,3,4,5,6))
+
+modelfit <- function(data, i) {
+  site.data <- data[, i]
+  # print(head(site.data))
+  # train and test 
+  y <- ts(site.data, start = c(1979, 1), end = c(2018, 12), frequency = 12)
+  # model fit 
+  t <- try(Arima(y=y, order=c(1,0,1), seasonal=c(1,1,1)), silent = TRUE)
+  if("try-error" %in% class(t)) {
+    arima.fit <- Arima(y=y, order=c(0,0,1), seasonal=c(1,1,1))
+  } else {
+    arima.fit <- Arima(y=y, order=c(1,0,1), seasonal=c(1,1,1))
+  }
+    
+  # predict
+  pred <- forecast(arima.fit, h=6)
+  return(pred$mean)
+}
+
+for (i in 3:918) {
+  site.name <- paste("X", as.character(i-2), sep = "")
+  pred.value <- modelfit(weather, i)
+  final.pred[site.name] <- pred.value
+}
+
+final.pred
+
+```
+
+Final results sample
+```{r}
+final.pred
+sample <- sort(sample(2:916, 5)) 
+p.pred <- tableGrob(final.pred[, sample])
+grid.arrange(p.pred)
+
+
+```
